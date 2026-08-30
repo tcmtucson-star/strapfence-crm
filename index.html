@@ -574,7 +574,9 @@ const STAGE_COLORS = {'New Lead':'#378ADD','Estimate Sent':'#7F77DD','Won / Job 
 const BADGE = {'New Lead':'background:#e8f0fc;color:#1a4d8a','Estimate Sent':'background:#eeedfb;color:#4a3aaa','Won / Job Booked':'background:#eaf3e0;color:#2d6a1f','Closed':'background:#f0ede8;color:#6b6860'};
 
 // ── SUPABASE DATA LAYER ───────────────────────────────────────────────────────
-let SUPABASE_URL = localStorage.getItem('sf_supabase_url') || '';
+// ── SUPABASE CONFIG ───────────────────────────────────────────────────────────
+const SUPABASE_URL_DEFAULT = 'https://fsthjyzaldctcsqzjxjp.supabase.co';
+let SUPABASE_URL = SUPABASE_URL_DEFAULT;
 let SUPABASE_KEY = localStorage.getItem('sf_supabase_key') || '';
 let supabaseReady = false;
 
@@ -1155,7 +1157,7 @@ function renderClosed() {
 
 // ── SETTINGS & DOCUSEAL ───────────────────────────────────────────────────────
 function renderSettings() {
-  const sbUrl = localStorage.getItem('sf_supabase_url')||'';
+  const sbUrl = SUPABASE_URL_DEFAULT;
   const sbKey = localStorage.getItem('sf_supabase_key')||'';
   const urlEl = document.getElementById('sb-url-input');
   const keyEl = document.getElementById('sb-key-input');
@@ -1176,16 +1178,14 @@ function renderSettings() {
 }
 
 function saveSupabaseSettings() {
-  const url = document.getElementById('sb-url-input').value.trim().replace(/\/$/, '');
   const key = document.getElementById('sb-key-input').value.trim();
-  if(!url || !key || key.startsWith('•')) { toast('Please enter both URL and key.'); return; }
-  localStorage.setItem('sf_supabase_url', url);
+  if(!key || key.startsWith('•')) { toast('Please enter your Publishable Key.'); return; }
   localStorage.setItem('sf_supabase_key', key);
-  SUPABASE_URL = url;
   SUPABASE_KEY = key;
+  SUPABASE_URL = SUPABASE_URL_DEFAULT;
   document.getElementById('sb-key-input').value = '••••••••••••••••';
   document.getElementById('sb-status').innerHTML = '<span style="color:var(--green)">✓ Saved. Click Test Connection to verify.</span>';
-  toast('Supabase settings saved.');
+  toast('Supabase key saved.');
 }
 
 async function testSupabaseConnection() {
@@ -3785,6 +3785,19 @@ if(SUPABASE_URL && SUPABASE_KEY) {
       renderLeads();
     }
   });
+} else if(SUPABASE_URL && !SUPABASE_KEY) {
+  // First run — prompt for key
+  setTimeout(() => {
+    const key = prompt('Welcome to StrapFence CRM!\n\nEnter your Supabase Publishable Key to enable cloud sync:\n(Find it in Supabase → Settings → API Keys → Publishable key)');
+    if(key && key.trim()) {
+      localStorage.setItem('sf_supabase_key', key.trim());
+      SUPABASE_KEY = key.trim();
+      loadFromSupabase().then(ok => {
+        if(ok) renderLeads();
+        toast('Connected to Supabase!');
+      });
+    }
+  }, 500);
 }
 
 renderLeads();
