@@ -666,10 +666,12 @@ async function loadFromSupabase() {
       sbGet('sf_leads'), sbGet('sf_estimates'),
       sbGet('sf_invoices'), sbGet('sf_contracts')
     ]);
-    if(l) { leads = fromSbRows(l); localStorage.setItem('sf_leads', JSON.stringify(leads)); }
-    if(e) { estimates = fromSbRows(e); localStorage.setItem('sf_estimates', JSON.stringify(estimates)); }
-    if(i) { invoices = fromSbRows(i); localStorage.setItem('sf_invoices', JSON.stringify(invoices)); }
-    if(c) { contracts = fromSbRows(c); localStorage.setItem('sf_contracts', JSON.stringify(contracts)); }
+    // Only overwrite local data if Supabase has records
+    // This prevents empty Supabase from wiping good localStorage data
+    if(l && l.length > 0) { leads = fromSbRows(l); localStorage.setItem('sf_leads', JSON.stringify(leads)); }
+    if(e && e.length > 0) { estimates = fromSbRows(e); localStorage.setItem('sf_estimates', JSON.stringify(estimates)); }
+    if(i && i.length > 0) { invoices = fromSbRows(i); localStorage.setItem('sf_invoices', JSON.stringify(invoices)); }
+    if(c && c.length > 0) { contracts = fromSbRows(c); localStorage.setItem('sf_contracts', JSON.stringify(contracts)); }
     supabaseReady = true;
     return true;
   } catch(ex) { console.warn('Supabase load failed, using localStorage', ex); return false; }
