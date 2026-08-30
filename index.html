@@ -388,7 +388,9 @@
         <button class="btn btn-outline btn-sm" onclick="testSupabaseConnection()">Test Connection</button>
         <button class="btn btn-outline btn-sm" onclick="migrateToSupabase()">⬆ Push All Data to Supabase</button>
         <button class="btn btn-outline btn-sm" onclick="loadFromSupabaseFull()">⬇ Pull Data from Supabase</button>
+        <button class="btn btn-outline btn-sm" onclick="migratePhotosToSupabase()" style="color:var(--accent);border-color:var(--accent);">📷 Upload All Photos to Cloud</button>
       </div>
+      <div id="photo-migrate-status" style="font-size:12px;margin-top:8px;"></div>
     </div>
 
     <!-- DOCUSEAL -->
@@ -1243,6 +1245,66 @@ async function migrateToSupabase() {
   } catch(e) {
     status.innerHTML = `<span style="color:var(--red)">Migration failed: ${e.message}</span>`;
   }
+}
+
+async function migratePhotosToSupabase() {
+  if(!SUPABASE_URL || !SUPABASE_KEY) { alert('Please save your Supabase settings first.'); return; }
+  const status = document.getElementById('photo-migrate-status');
+
+  // Find all estimates with base64 photos that haven't been uploaded yet
+  const estsWithPhotos = estimates.filter(e =>
+    (e.photos||[]).some(p => p.dataUrl && !p.url)
+  );
+
+  if(!estsWithPhotos.length) {
+    status.innerHTML = '<span style="color:var(--green)">✓ All photos are already in the cloud!</span>';
+    return;
+  }
+
+  const totalPhotos = estsWithPhotos.reduce((s,e)=>s+(e.photos||[]).filter(p=>p.dataUrl&&!p.url).length,0);
+  status.innerHTML = `<span style="color:var(--text3)">Uploading ${totalPhotos} photos from ${estsWithPhotos.length} estimates...</span>`;
+
+  let uploaded = 0;
+  let failed = 0;
+
+  for(const est of estsWithPhotos) {
+    const photos = est.photos || [];
+    let changed = false;
+    for(let i = 0; i < photos.length; i++) {
+      const p = photos[i];
+      if(!p.dataUrl || p.url) continue;
+      // Convert base64 to blob
+      try {
+        const res = await fetch(p.dataUrl);
+        const blob = await res.blob();
+        const filename = `photo_${est.estNum}_${i}_${Date.now()}.jpg`;
+        const url = await uploadPhotoToSupabase(blob, filename);
+        if(url) {
+          photos[i] = {...p, url, dataUrl: p.dataUrl}; // keep dataUrl as local cache
+          uploaded++;
+          changed = true;
+          status.innerHTML = `<span style="color:var(--text3)">Uploaded ${uploaded}/${totalPhotos} photos...</span>`;
+        } else {
+          failed++;
+        }
+      } catch(e) { failed++; }
+    }
+    if(changed) {
+      // Update estimate in array and push to Supabase
+      const idx = estimates.findIndex(e2=>e2.estNum===est.estNum);
+      if(idx>=0) estimates[idx].photos = photos;
+    }
+  }
+
+  // Save updated estimates to localStorage and Supabase
+  saveAll();
+
+  if(failed === 0) {
+    status.innerHTML = `<span style="color:var(--green)">✓ All ${uploaded} photos uploaded to cloud successfully!</span>`;
+  } else {
+    status.innerHTML = `<span style="color:var(--accent)">Uploaded ${uploaded} photos. ${failed} failed — try again.</span>`;
+  }
+  toast(`${uploaded} photos migrated to Supabase Storage.`);
 }
 
 async function loadFromSupabaseFull() {
