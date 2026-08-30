@@ -618,15 +618,19 @@ async function sbUpsert(table, rows) {
 async function sbDeleteAll(table) {
   if(!SUPABASE_URL || !SUPABASE_KEY) return;
   try {
-    // Delete all rows — works for both integer and string IDs
-    await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=neq.___none___`, {
+    // Use gte.0 for numeric ids — works for all our tables
+    await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=gte.0`, {
+      method: 'DELETE', headers: sbHeaders()
+    });
+    // Also delete any string ids (est numbers like EST-1001)
+    await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=like.*`, {
       method: 'DELETE', headers: sbHeaders()
     });
   } catch(e) {}
 }
 
 async function sbReplace(table, rows) {
-  await sbDeleteAll(table);
+  // Use upsert (insert or update) — no delete needed, avoids partial failure risk
   if(rows.length) await sbUpsert(table, rows);
 }
 
@@ -1225,14 +1229,15 @@ async function migrateToSupabase() {
   if(!SUPABASE_URL || !SUPABASE_KEY) { alert('Please save your Supabase settings first.'); return; }
   if(!confirm(`Push all local data to Supabase?\n\nLeads: ${leads.length}\nEstimates: ${estimates.length}\nInvoices: ${invoices.length}\nContracts: ${contracts.length}\n\nThis will overwrite anything currently in Supabase.`)) return;
   const status = document.getElementById('sb-status');
-  status.innerHTML = '<span style="color:var(--text3)">Uploading...</span>';
+  status.innerHTML = '<span style="color:var(--text3)">Uploading leads...</span>';
   try {
-    await Promise.all([
-      sbReplace('sf_leads', leadsToSb(leads)),
-      sbReplace('sf_estimates', estToSbNoPhotos(estimates)),
-      sbReplace('sf_invoices', invToSb(invoices)),
-      sbReplace('sf_contracts', conToSb(contracts)),
-    ]);
+    await sbReplace('sf_leads', leadsToSb(leads));
+    status.innerHTML = '<span style="color:var(--text3)">Uploading estimates...</span>';
+    await sbReplace('sf_estimates', estToSbNoPhotos(estimates));
+    status.innerHTML = '<span style="color:var(--text3)">Uploading invoices...</span>';
+    await sbReplace('sf_invoices', invToSb(invoices));
+    status.innerHTML = '<span style="color:var(--text3)">Uploading contracts...</span>';
+    await sbReplace('sf_contracts', conToSb(contracts));
     status.innerHTML = '<span style="color:var(--green)">✓ All data pushed to Supabase successfully!</span>';
     toast('Data migrated to Supabase!');
   } catch(e) {
