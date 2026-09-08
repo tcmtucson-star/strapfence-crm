@@ -714,25 +714,32 @@ if(estimates.length) {
   });
 }
 
-function saveAll() {
+async function saveAll() {
   // Always save to localStorage as cache
-  saveData('sf_leads', leads);
-  saveData('sf_nextLeadId', nextLeadId);
-  saveData('sf_estimates', estimates);
-  saveData('sf_nextEstId', nextEstId);
-  saveData('sf_nextEstNum', nextEstNum);
-  saveData('sf_contracts', contracts);
-  saveData('sf_nextContractId', nextContractId);
-  saveData('sf_invoices', invoices);
-  saveData('sf_nextInvId', nextInvId);
-  // Also sync to Supabase if configured
+  try {
+    saveData('sf_leads', leads);
+    saveData('sf_nextLeadId', nextLeadId);
+    saveData('sf_estimates', estimates);
+    saveData('sf_nextEstId', nextEstId);
+    saveData('sf_nextEstNum', nextEstNum);
+    saveData('sf_contracts', contracts);
+    saveData('sf_nextContractId', nextContractId);
+    saveData('sf_invoices', invoices);
+    saveData('sf_nextInvId', nextInvId);
+  } catch(e) { console.warn('localStorage save failed:', e); }
+  // Also sync to Supabase if configured — await so we know it succeeded
   if(SUPABASE_URL && SUPABASE_KEY) {
-    Promise.all([
-      sbReplace('sf_leads', leadsToSb(leads)),
-      sbReplace('sf_estimates', estToSbNoPhotos(estimates)),
-      sbReplace('sf_invoices', invToSb(invoices)),
-      sbReplace('sf_contracts', conToSb(contracts)),
-    ]).catch(e => console.warn('Supabase sync failed:', e));
+    try {
+      await Promise.all([
+        sbReplace('sf_leads', leadsToSb(leads)),
+        sbReplace('sf_estimates', estToSbNoPhotos(estimates)),
+        sbReplace('sf_invoices', invToSb(invoices)),
+        sbReplace('sf_contracts', conToSb(contracts)),
+      ]);
+    } catch(e) {
+      console.warn('Supabase sync failed:', e);
+      toast('⚠ Cloud sync failed — data saved locally only.');
+    }
   }
 }
 
@@ -3864,6 +3871,16 @@ const recoveryEsts = [
     addnote:'Demo Existing Fence', addamt:150, discount:0, discountnote:'', customLines:[], customTotal:0,
     subtotal:5600, total:5600, deposit:2800, balance:2800, depositPaid:0,
     notes:'', dateStr:'2026-07-20', expStr:'2026-08-19', status:'Sent', createdDate:'2026-07-20', photos:[]
+  },
+  {
+    id:9906, estNum:'EST-1031', client:'Randy Agraves',
+    phone:'520-990-2431', email:'randyagraves@gmail.com',
+    address:'9431 E. Placita Eunice', type:'', height:'', lf:0, pplf:0,
+    fenceSections:[], gateRows:[], fence:0, fenceTotal:0, gateTotal:0,
+    addnote:'', addamt:0, discount:0, discountnote:'',
+    customLines:[{desc:'Replace wood in carport and patio with Perlins', qty:1, price:2950, total:2950}],
+    customTotal:2950, subtotal:2950, total:2950, deposit:1475, balance:1475, depositPaid:0,
+    notes:'', dateStr:'2026-09-05', expStr:'2026-09-15', status:'Sent', createdDate:'2026-09-05', photos:[]
   }
 ];
 recoveryEsts.forEach(r => {
