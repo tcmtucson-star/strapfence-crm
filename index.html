@@ -1990,10 +1990,12 @@ function buildPDF(data, type) {
       ['PAID IN FULL', '$0.00']
     ];
   } else {
+    const depositAmt = data.deposit || Math.round(Number(data.total) * 0.5 * 100) / 100;
+    const pendingBalance = Math.round(Math.max(0, Number(data.total) - depositAmt) * 100) / 100;
     totRows = [
       ['Total', m(data.total)],
-      ['50% Deposit Due', m(data.deposit)],
-      ['Balance Due at Completion', m(data.balance)]
+      ['50% Deposit Due', m(depositAmt)],
+      ['Balance Due at Completion', m(pendingBalance)]
     ];
   }
 
