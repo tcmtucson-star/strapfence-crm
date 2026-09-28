@@ -669,8 +669,8 @@ async function loadFromSupabase() {
     // Only overwrite local data if Supabase has records
     // This prevents empty Supabase from wiping good localStorage data
     if(l && l.length > 0) { leads = fromSbRows(l); localStorage.setItem('sf_leads', JSON.stringify(leads)); }
-    if(e && e.length > 0) { estimates = fromSbRows(e); localStorage.setItem('sf_estimates', JSON.stringify(estimates)); }
-    if(i && i.length > 0) { invoices = fromSbRows(i); localStorage.setItem('sf_invoices', JSON.stringify(invoices)); }
+    if(e && e.length > 0) { const raw = fromSbRows(e); estimates = dedupeByKey(raw,'estNum'); localStorage.setItem('sf_estimates', JSON.stringify(estimates)); }
+    if(i && i.length > 0) { const raw = fromSbRows(i); invoices = dedupeByKey(raw,'invNum'); localStorage.setItem('sf_invoices', JSON.stringify(invoices)); }
     if(c && c.length > 0) { contracts = fromSbRows(c); localStorage.setItem('sf_contracts', JSON.stringify(contracts)); }
     supabaseReady = true;
     return true;
@@ -679,6 +679,13 @@ async function loadFromSupabase() {
 
 function loadData(key, def) { try { return JSON.parse(localStorage.getItem(key)) || def; } catch(e) { return def; } }
 function saveData(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) { console.warn('localStorage full, Supabase only'); } }
+
+// Deduplicate array by a key field, keeping the last occurrence (most recently saved wins)
+function dedupeByKey(arr, key) {
+  const map = new Map();
+  (arr||[]).forEach(item => { if(item[key]) map.set(item[key], item); });
+  return Array.from(map.values());
+}
 
 let leads = loadData('sf_leads', [
   {id:1,name:'Dave Marquez',phone:'520-555-0101',email:'dave@email.com',address:'4400 E Speedway Blvd, Tucson AZ',type:'Strap Steel Fence',size:'200 ft',amt:9000,stage:'Won / Job Booked',notes:'HOA approved. 6ft height.',date:'2026-04-28'},
@@ -690,7 +697,7 @@ let leads = loadData('sf_leads', [
 let nextLeadId = loadData('sf_nextLeadId', 6);
 let contracts = loadData('sf_contracts', []);
 let nextContractId = loadData('sf_nextContractId', 3001);
-let estimates = loadData('sf_estimates', []);
+let estimates = dedupeByKey(loadData('sf_estimates', []), 'estNum');
 let nextEstId = loadData('sf_nextEstId', 2001);
 let nextEstNum = loadData('sf_nextEstNum', 1001);
 let invoices = loadData('sf_invoices', []);
@@ -3297,9 +3304,17 @@ function openEstModal(estNum) {
   editingEstId = estNum;
   document.getElementById('est-modal-title').textContent = `${est.estNum} — ${est.client}`;
 
-  const gateRows = (est.gateRows && est.gateRows.length)
-    ? est.gateRows.map(g=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:13px;"><span style="color:var(--text2)">${g.qty}x ${g.type} @ $${g.price}</span><span style="font-weight:600;">$${g.total.toLocaleString()}</span></div>`).join('')
+  const validFenceSectionsModal = (est.fenceSections||[]).filter(f=>f.lf&&parseFloat(f.lf)>0);
+  const fenceLines = validFenceSectionsModal.length
+    ? validFenceSectionsModal.map(f=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);"><span style="color:var(--text2)">Strap Steel Fence${f.height?' — '+f.height:''} — ${f.lf} linear ft @ $${f.pplf}/ft</span><span style="font-weight:600;">$${Number(f.lf*f.pplf).toLocaleString()}</span></div>`).join('')
+    : (est.lf&&parseFloat(est.lf)>0 ? `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);"><span style="color:var(--text2)">Strap Steel Fence${est.height?' — '+est.height:''} — ${est.lf} linear ft @ $${est.pplf}/ft</span><span style="font-weight:600;">$${Number(est.fence||est.lf*est.pplf).toLocaleString()}</span></div>` : '');
+  const validGateRowsModal = (est.gateRows||[]).filter(g=>g.price&&parseFloat(g.price)>0);
+  const gateRows = validGateRowsModal.length
+    ? validGateRowsModal.map(g=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:13px;"><span style="color:var(--text2)">${g.qty}x ${g.type} @ $${g.price}</span><span style="font-weight:600;">$${g.total.toLocaleString()}</span></div>`).join('')
     : '';
+  const validWallToppersModal = (est.wallToppers||[]).filter(w=>w.lf&&parseFloat(w.lf)>0);
+  const wtModalSource = validWallToppersModal.length ? validWallToppersModal : (est.wallTopper&&est.wallTopper.lf?[est.wallTopper]:[]);
+  const wallTopperLines = wtModalSource.map(w=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);"><span style="color:var(--text2)">Wall Topper${w.height?' — '+w.height+' ft':''} — ${w.lf} LF @ $${w.pplf}/LF</span><span style="font-weight:600;">$${Number(w.total||(w.lf*w.pplf)).toLocaleString()}</span></div>`).join('');
 
   const statusStyle = est.status==='Accepted' ? 'background:#eaf3e0;color:#2d6a1f'
     : est.status==='Declined' ? 'background:#fceaea;color:#a32d2d'
@@ -3323,14 +3338,15 @@ function openEstModal(estNum) {
       </div>
     </div>
     <div style="background:var(--surface2);border-radius:var(--radius);padding:12px 14px;font-size:13px;margin-bottom:1rem;">
-      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);"><span style="color:var(--text2)">Strap Steel Fence — ${est.height} — ${est.lf} linear ft @ $${est.pplf}/ft</span><span style="font-weight:600;">$${Number(est.fence||est.lf*est.pplf).toLocaleString()}</span></div>
+      ${fenceLines}
+      ${wallTopperLines}
       ${gateRows}
       ${est.addamt ? `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);"><span style="color:var(--text2)">${est.addnote||'Additional charges'}</span><span style="font-weight:600;">$${Number(est.addamt).toLocaleString()}</span></div>` : ''}
       ${(est.customLines&&est.customLines.length) ? est.customLines.map(l=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);"><span style="color:var(--text2)">${l.qty>1?l.qty+'x ':''} ${l.desc}</span><span style="font-weight:600;">$${Number(l.total).toLocaleString()}</span></div>`).join('') : ''}
       ${est.discount ? `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);"><span style="color:var(--green)">${est.discountnote||'Discount'}</span><span style="font-weight:600;color:var(--green);">-$${Number(est.discount).toLocaleString()}</span></div>` : ''}
       <div style="display:flex;justify-content:space-between;padding:8px 0 4px;border-top:2px solid var(--text);margin-top:4px;"><span style="font-weight:600;font-size:14px;">Total</span><span style="font-weight:600;font-size:16px;color:var(--accent);">$${Number(est.total).toLocaleString()}</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);"><span>50% Deposit</span><span>$${Number(est.deposit).toLocaleString()}</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);"><span>Balance at Completion</span><span>$${Number(est.balance).toLocaleString()}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);"><span>50% Deposit</span><span>$${Number(est.deposit||est.total*0.5).toLocaleString()}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);"><span>Balance at Completion</span><span>$${Number(est.deposit||est.total*0.5).toLocaleString()}</span></div>
     </div>
     ${est.notes ? `<div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:1rem;"><strong>Notes:</strong> ${est.notes}</div>` : ''}
     <div style="margin-bottom:0.5rem;">
