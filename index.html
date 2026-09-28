@@ -1536,101 +1536,56 @@ function clearPhotos() {
 }
 
 function addPhotoPageToPDF(doc, W, M) {
-  if(!estimatePhotos.length) return;
+  const loadablePhotos = estimatePhotos.filter(p => p.dataUrl && p.dataUrl.startsWith('data:'));
+  if(!loadablePhotos.length) return;
 
   const usable = W - (M * 2);
   const pageH = 792;
-  const captionH = 18;
-  const maxImgH = pageH - 100;
-
-  const photos = estimatePhotos.filter(p => p.dataUrl || p.url).map(p => {
-    const src = p.dataUrl || p.url;
-    let nw = 1, nh = 1;
-    try { const props = doc.getImageProperties(src); nw = props.width; nh = props.height; } catch(e) {}
-    return { ...p, src, nw, nh };
-  });
-
   let isFirstPage = true;
-  let y = 0;
-  let col = 0;
-  let rowMaxH = 0;
 
-  function newPage() {
+  loadablePhotos.forEach((p) => {
     doc.addPage();
     doc.setFillColor(26,77,138);
     doc.rect(0,0,W,4,'F');
+
+    let yStart;
     if(isFirstPage) {
       doc.setFont('helvetica','bold');
       doc.setFontSize(13);
       doc.setTextColor(26,77,138);
-      doc.text('Site Photos', M, 26);
+      doc.text('Site Photos', M, 22);
       doc.setDrawColor(220,218,213);
       doc.setLineWidth(0.5);
-      doc.line(M, 36, W-M, 36);
+      doc.line(M, 32, W-M, 32);
       isFirstPage = false;
-      y = 50;
+      yStart = 46;
     } else {
-      y = 24;
+      yStart = 16;
     }
-    col = 0;
-    rowMaxH = 0;
-  }
 
-  // Start the first page
-  newPage();
+    const availH = pageH - yStart - 30;
+    const src = p.dataUrl;
+    let nw = 1, nh = 1;
+    try { const props = doc.getImageProperties(src); nw = props.width; nh = props.height; } catch(e) {}
+    const aspect = nh / nw;
 
-  let i = 0;
-  while(i < photos.length) {
-    const p = photos[i];
-    const aspect = p.nh / p.nw;
-    const isPortrait = aspect > 0.8;
+    let imgW = usable;
+    let imgH = imgW * aspect;
+    if(imgH > availH) { imgH = availH; imgW = imgH / aspect; }
 
-    if(isPortrait) {
-      // Flush any pending left-column landscape image first
-      if(col === 1) { y += rowMaxH + 8; col = 0; rowMaxH = 0; }
-
-      let imgW = usable;
-      let imgH = Math.min(imgW * aspect, maxImgH);
-      imgW = imgH / aspect; // recalc width if height was capped
-
-      if(y + imgH > pageH - 30) newPage();
-
-      const x = M + (usable - imgW) / 2;
-      try {
-        const fmt = (p.src||'').startsWith('data:image/png') ? 'PNG' : 'JPEG';
-        doc.addImage(p.src, fmt, x, y, imgW, imgH, undefined, 'FAST');
-        doc.setDrawColor(200,198,194); doc.setLineWidth(0.3); doc.rect(x, y, imgW, imgH);
-      } catch(e) { console.warn('Photo skipped:', e); }
-      if(p.caption) {
-        doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.setTextColor(107,104,96);
-        doc.text(p.caption, W/2, y + imgH + 11, { align:'center', maxWidth: usable });
-      }
-      y += imgH + (p.caption ? captionH : 12);
-
-    } else {
-      // Landscape — two per row
-      const imgW = (usable - 10) / 2;
-      const imgH = Math.min(imgW * aspect, maxImgH);
-      const x = M + col * (imgW + 10);
-
-      if(col === 0 && y + imgH > pageH - 30) newPage();
-
-      try {
-        const fmt = (p.src||'').startsWith('data:image/png') ? 'PNG' : 'JPEG';
-        doc.addImage(p.src, fmt, x, y, imgW, imgH, undefined, 'FAST');
-        doc.setDrawColor(200,198,194); doc.setLineWidth(0.3); doc.rect(x, y, imgW, imgH);
-      } catch(e) { console.warn('Photo skipped:', e); }
-      if(p.caption) {
-        doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.setTextColor(107,104,96);
-        doc.text(p.caption, x + imgW/2, y + imgH + 11, { align:'center', maxWidth: imgW });
-      }
-      rowMaxH = Math.max(rowMaxH, imgH + (p.caption ? captionH : 8));
-      col++;
-      if(col >= 2) { y += rowMaxH; col = 0; rowMaxH = 0; }
+    const x = M + (usable - imgW) / 2;
+    try {
+      const fmt = src.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(src, fmt, x, yStart, imgW, imgH, undefined, 'FAST');
+      doc.setDrawColor(200,198,194); doc.setLineWidth(0.3); doc.rect(x, yStart, imgW, imgH);
+    } catch(e) { console.warn('Photo skipped:', e); }
+    if(p.caption) {
+      doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.setTextColor(107,104,96);
+      doc.text(p.caption, W/2, yStart + imgH + 12, { align:'center', maxWidth: usable });
     }
-    i++;
-  }
+  });
 }
+
 
 function getFenceSections() {
   const rows = document.querySelectorAll('#fence-sections-list .fence-section-row');
@@ -3251,12 +3206,13 @@ function loadEstimateIntoForm(est) {
   document.getElementById('e-email').value = est.email || '';
   document.getElementById('e-address').value = est.address || '';
 
-  // Rebuild fence sections
+  // Rebuild fence sections (filter out blank/zero entries; fall back to legacy flat fields)
   document.getElementById('fence-sections-list').innerHTML = '';
   fenceSectionCount = 0;
-  if(est.fenceSections && est.fenceSections.length) {
-    est.fenceSections.forEach(f => addFenceSection(f.height, f.lf, f.pplf));
-  } else if(est.lf) {
+  const validFenceSections = (est.fenceSections || []).filter(f => f.lf && parseFloat(f.lf) > 0);
+  if(validFenceSections.length) {
+    validFenceSections.forEach(f => addFenceSection(f.height, f.lf, f.pplf));
+  } else if(est.lf && parseFloat(est.lf) > 0) {
     addFenceSection(est.height||'6 ft', est.lf, est.pplf||45);
   }
 
@@ -3264,20 +3220,22 @@ function loadEstimateIntoForm(est) {
   document.getElementById('e-addnote').value = est.addnote || '';
   document.getElementById('e-addamt').value = est.addamt || 0;
   document.getElementById('e-discount').value = est.discount || 0;
-  // Restore wall toppers
+  // Restore wall toppers (filter out blank/zero entries; fall back to legacy singular format)
   document.getElementById('wall-toppers-list').innerHTML = '';
   wallTopperCount = 0;
-  const wts = est.wallToppers || (est.wallTopper && est.wallTopper.lf ? [est.wallTopper] : []);
+  const rawWts = (est.wallToppers || []).filter(w => w.lf && parseFloat(w.lf) > 0);
+  const wts = rawWts.length ? rawWts : (est.wallTopper && est.wallTopper.lf ? [est.wallTopper] : []);
   wts.forEach(w => addWallTopperRow(w.height, w.lf, w.pplf));
   document.getElementById('e-discountnote').value = est.discountnote || '';
   document.getElementById('e-notes').value = est.notes || '';
   document.getElementById('e-date').value = est.dateStr || todayStr();
 
-  // Clear and rebuild gate rows
+  // Clear and rebuild gate rows (filter out blank/zero entries)
   document.getElementById('gates-list').innerHTML = '';
   gateRowCount = 0;
-  if(est.gateRows && est.gateRows.length) {
-    est.gateRows.forEach(g => {
+  const validGateRows = (est.gateRows || []).filter(g => g.price && parseFloat(g.price) > 0);
+  if(validGateRows.length) {
+    validGateRows.forEach(g => {
       gateRowCount++;
       const id = gateRowCount;
       const div = document.createElement('div');
