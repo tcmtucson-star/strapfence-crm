@@ -1334,6 +1334,16 @@ async function loadFromSupabaseFull() {
     if(leads.length) nextLeadId = Math.max(nextLeadId, Math.max(...leads.map(l=>l.id||0)) + 1);
     if(invoices.length) nextInvId = Math.max(nextInvId, Math.max(...invoices.map(i=>i.invNum||i.id||0)) + 1);
     if(estimates.length) nextEstId = Math.max(nextEstId, Math.max(...estimates.map(e=>e.id||0)) + 1);
+    if(estimates.length) {
+      estimates.forEach(e => {
+        const parts = (e.estNum||'').split('-');
+        if(parts.length===2 && parts[0]==='EST') {
+          const n = parseInt(parts[1]);
+          if(n >= 1000 && n < 10000 && n >= nextEstNum) nextEstNum = n + 1;
+        }
+      });
+      saveData('sf_nextEstNum', nextEstNum);
+    }
     renderLeads();
     status.innerHTML = '<span style="color:var(--green)">✓ Data loaded from Supabase!</span>';
     toast('Data loaded from Supabase.');
@@ -2117,7 +2127,11 @@ function buildPDF(data, type) {
 function assignEstNum(data) {
   if(window._editingEstNum) return { ...data, estNum: window._editingEstNum };
   if(data.estNum) return data;
-  return { ...data, estNum: 'EST-'+(nextEstNum++) };
+  // Skip any numbers already in use (guards against counter reset after restore)
+  const usedNums = new Set(estimates.map(e => e.estNum));
+  let candidate;
+  do { candidate = 'EST-' + (nextEstNum++); } while(usedNums.has(candidate));
+  return { ...data, estNum: candidate };
 }
 
 function copyEstimateToClipboard() {
@@ -2579,11 +2593,7 @@ function generateEstimatePDF() {
   let data = getEstimateData();
   if(!data.client) { alert('Please enter a client name before downloading.'); return; }
   // Assign estNum now so both the PDF and saved record use the same number
-  if(window._editingEstNum) {
-    data = { ...data, estNum: window._editingEstNum };
-  } else if(!data.estNum) {
-    data = { ...data, estNum: 'EST-'+(nextEstNum++) };
-  }
+  data = assignEstNum(data);
 
 
 
@@ -2980,11 +2990,7 @@ function syncInvoiceFromEstimate(est) {
 }
 
 function saveEstimate(data) {
-  if(window._editingEstNum) {
-    data = { ...data, estNum: window._editingEstNum };
-  } else if(!data.estNum) {
-    data = { ...data, estNum: 'EST-'+(nextEstNum++) };
-  }
+  data = assignEstNum(data);
   // Check if estimate with same estNum already exists - update it
   const existing = estimates.findIndex(e => e.estNum === data.estNum);
   const est = {
@@ -3667,6 +3673,7 @@ function exportBackup() {
     invoices,
     nextLeadId,
     nextEstId,
+    nextEstNum,
     nextContractId,
     nextInvId,
   };
@@ -3707,13 +3714,23 @@ function importBackup(event) {
       invoices = backup.invoices;
       nextLeadId = backup.nextLeadId || (Math.max(...leads.map(l=>l.id), 0) + 1);
       nextEstId = backup.nextEstId || (Math.max(...(estimates.map(e=>e.id)||[0]), 0) + 1);
+      nextEstNum = backup.nextEstNum || 1001;
       nextContractId = backup.nextContractId || (Math.max(...(contracts.map(c=>c.id)||[0]), 0) + 1);
       nextInvId = backup.nextInvId || (Math.max(...invoices.map(i=>i.id), 0) + 1);
-      // Self-heal again in case stored counters are stale
+      // Self-heal: ensure counters are always ahead of the highest existing value
       if(leads.length) nextLeadId = Math.max(nextLeadId, Math.max(...leads.map(l=>l.id||0)) + 1);
       if(invoices.length) nextInvId = Math.max(nextInvId, Math.max(...invoices.map(i=>i.invNum||i.id||0)) + 1);
       if(contracts.length) nextContractId = Math.max(nextContractId, Math.max(...contracts.map(c=>c.id||0)) + 1);
       if(estimates.length) nextEstId = Math.max(nextEstId, Math.max(...estimates.map(e=>e.id||0)) + 1);
+      if(estimates.length) {
+        estimates.forEach(e => {
+          const parts = (e.estNum||'').split('-');
+          if(parts.length===2 && parts[0]==='EST') {
+            const n = parseInt(parts[1]);
+            if(n >= 1000 && n < 10000 && n >= nextEstNum) nextEstNum = n + 1;
+          }
+        });
+      }
       saveAll();
       renderLeads();
       event.target.value = '';
@@ -3903,6 +3920,16 @@ if(SUPABASE_URL && SUPABASE_KEY) {
       if(leads.length) nextLeadId = Math.max(nextLeadId, Math.max(...leads.map(l=>l.id||0)) + 1);
       if(invoices.length) nextInvId = Math.max(nextInvId, Math.max(...invoices.map(i=>i.invNum||i.id||0)) + 1);
       if(estimates.length) nextEstId = Math.max(nextEstId, Math.max(...estimates.map(e=>e.id||0)) + 1);
+      if(estimates.length) {
+        estimates.forEach(e => {
+          const parts = (e.estNum||'').split('-');
+          if(parts.length===2 && parts[0]==='EST') {
+            const n = parseInt(parts[1]);
+            if(n >= 1000 && n < 10000 && n >= nextEstNum) nextEstNum = n + 1;
+          }
+        });
+        saveData('sf_nextEstNum', nextEstNum);
+      }
       renderLeads();
     }
   });
