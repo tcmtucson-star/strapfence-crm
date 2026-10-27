@@ -2552,6 +2552,10 @@ function generateContractPDF() {
   const existingIdx = estimates.findIndex(e=>e.estNum===data.estNum);
   if(existingIdx>=0) estimates[existingIdx] = {...estimates[existingIdx], ...data};
   else estimates.push({id:nextEstId++, ...data, createdDate:todayStr()});
+  window._editingEstNum = data.estNum;
+  document.getElementById('est-save-changes-btn').style.display = 'inline-flex';
+  document.getElementById('est-save-draft-btn').style.display = 'none';
+  document.getElementById('estimator-title').textContent = 'Editing: ' + data.estNum;
   saveAll();
   const doc = buildContractPDF(data);
   doc.save(`StrapFence-Contract-${data.client.replace(/\s+/g,'-')}.pdf`);
@@ -2650,10 +2654,14 @@ function convertToInvoice() {
   } else {
     estimates.push({id:nextEstId++, ...data, createdDate:todayStr()});
   }
-  window._editingEstNum = null;
-  document.getElementById('est-save-changes-btn').style.display = 'none';
-  document.getElementById('est-save-draft-btn').style.display = 'inline-flex';
-  document.getElementById('estimator-title').textContent = 'New Estimate';
+  // Keep _editingEstNum set — do NOT clear it here. If user returns to Estimator tab
+  // the form still has data for this estimate and any PDF/save action must update the
+  // same record, not create a new one. Form is reset only when user explicitly clicks
+  // "Clear Form / New Estimate" or edits a different estimate.
+  window._editingEstNum = data.estNum;
+  document.getElementById('est-save-changes-btn').style.display = 'inline-flex';
+  document.getElementById('est-save-draft-btn').style.display = 'none';
+  document.getElementById('estimator-title').textContent = 'Editing: ' + data.estNum;
 
   const li = leads.findIndex(l=>l.name.toLowerCase()===data.client.toLowerCase());
   if(li>=0) { leads[li].isClient=true; leads[li].clientStatus=leads[li].clientStatus||'Job Scheduled'; leads[li].amt=data.total; }
@@ -2991,6 +2999,7 @@ function saveEstimate(data) {
     lf: data.lf,
     pplf: data.pplf,
     fenceSections: data.fenceSections || [],
+    wallToppers: data.wallToppers || [],
     gateRows: data.gateRows,
     addnote: data.addnote,
     addamt: data.addamt,
