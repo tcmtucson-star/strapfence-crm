@@ -719,6 +719,8 @@ if(estimates.length) {
       if(n >= 1000 && n < 10000 && n >= nextEstNum) nextEstNum = n + 1;
     }
   });
+  // Persist immediately — don't wait for saveAll() or a duplicate can slip through
+  saveData('sf_nextEstNum', nextEstNum);
 }
 
 async function saveAll() {
@@ -3177,8 +3179,11 @@ function saveEstimateEdits(estNum) {
   if(i>=0) estimates[i] = {...estimates[i], ...data};
   syncInvoiceFromEstimate(estimates[i>=0?i:estimates.length-1]);
   saveAll();
-  document.getElementById('estimator-title').textContent = 'New Estimate';
-  window._editingEstNum = null;
+  // Keep _editingEstNum set so subsequent PDF/contract/status changes update same record
+  window._editingEstNum = estNum;
+  document.getElementById('estimator-title').textContent = 'Editing: ' + estNum;
+  document.getElementById('est-save-changes-btn').style.display = 'inline-flex';
+  document.getElementById('est-save-draft-btn').style.display = 'none';
   renderEstimates();
   toast('Estimate saved.');
 }
@@ -3208,9 +3213,7 @@ function saveDraft() {
 function saveCurrentEstimateEdits() {
   if(!window._editingEstNum) return;
   saveEstimateEdits(window._editingEstNum);
-  document.getElementById('est-save-changes-btn').style.display = 'none';
-  document.getElementById('estimator-title').textContent = 'New Estimate';
-  toast('Estimate saved.');
+  // Note: saveEstimateEdits now keeps _editingEstNum set — title/button state already handled there
 }
 
 function loadEstimateIntoForm(est) {
